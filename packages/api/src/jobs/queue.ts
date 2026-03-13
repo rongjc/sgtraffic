@@ -35,7 +35,12 @@ class SimpleJobQueue {
 
     while (this.queue.length > 0) {
       const job = this.queue.shift()!;
-      await this.runWithRetry(job);
+      try {
+        await this.runWithRetry(job);
+      } catch (err) {
+        // Permanent failure already logged in runWithRetry; continue draining
+        console.error(`[Queue] Continuing after permanent failure for job ${job.scanId}`);
+      }
     }
 
     this.processing = false;

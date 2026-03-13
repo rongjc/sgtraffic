@@ -3,6 +3,8 @@ import path from 'path';
 import { initDb } from './db';
 import { errorHandler, notFound } from './middleware/errorHandler';
 import scansRouter from './routes/scans';
+import { jobQueue } from './jobs/queue';
+import { processApkJob } from './jobs/processor';
 
 const app = express();
 const PORT = process.env.PORT ?? 3001;
@@ -37,8 +39,10 @@ app.use(errorHandler);
 
 // Boot
 initDb();
+jobQueue.register(processApkJob);
 app.listen(PORT, () => {
   console.log(`[API] Listening on http://localhost:${PORT}`);
+  console.log(`[API] Analyzer endpoint: ${process.env.ANALYZER_URL ?? 'http://127.0.0.1:5001'}`);
 });
 
 export default app;
