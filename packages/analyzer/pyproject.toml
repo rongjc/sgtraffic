@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "apk-analyzer"
+version = "0.1.0"
+description = "APK static analysis engine for PHA detection"
+requires-python = ">=3.11"
+dependencies = [
+    "androguard>=3.4.0",
+    "flask>=3.0.0",
+    "cryptography>=42.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[project.scripts]
+apk-analyzer = "src.cli:main"

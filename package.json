@@ -1,0 +1,15 @@
+{
+  "name": "apk-malware-scanner",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w packages/api\" \"npm run dev -w packages/web\"",
+    "build": "npm run build -w packages/api && npm run build -w packages/web"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
