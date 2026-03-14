@@ -1,6 +1,18 @@
-version: "3.9"
-
 services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
   api:
     build:
       context: .
@@ -8,14 +20,17 @@ services:
     ports:
       - "3001:3001"
     environment:
-      - MONGODB_URI=${MONGODB_URI}
+      - MONGODB_URI=${MONGODB_URI:-mongodb://mongo:27017/apk-scanner}
       - ANALYZER_URL=http://analyzer:5001
       - UPLOADS_DIR=/app/uploads
       - NODE_ENV=production
     volumes:
       - uploads:/app/uploads
     depends_on:
-      - analyzer
+      mongo:
+        condition: service_healthy
+      analyzer:
+        condition: service_started
     restart: unless-stopped
 
   analyzer:
@@ -86,3 +101,4 @@ services:
 volumes:
   uploads:
   emulator-data:
+  mongo-data:
