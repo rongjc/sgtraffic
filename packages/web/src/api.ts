@@ -31,7 +31,7 @@ export async function uploadApk(file: File, onProgress: (pct: number) => void): 
   const form = new FormData();
   form.append('file', file);
   const { data } = await api.post<{ id: string }>('/scans', form, {
-    onUploadProgress: (e) => {
+    onUploadProgress: (e: import('axios').AxiosProgressEvent) => {
       if (e.total) onProgress(Math.round((e.loaded / e.total) * 100));
     },
   });
