@@ -1,0 +1,28 @@
+#!/bin/bash
+# pre-push hook: runs full build before any push.
+# Blocks the push if the build fails.
+# Installed via: bash scripts/install-hooks.sh
+
+set -e
+
+ROOT="$(git rev-parse --show-toplevel)"
+
+echo "🔨 [pre-push] Running build checks before push..."
+
+# Node.js: build API + Web
+echo ""
+echo "▶ Building API..."
+npm run build -w packages/api --prefix "$ROOT" 2>&1
+
+echo ""
+echo "▶ Building Web..."
+npm run build -w packages/web --prefix "$ROOT" 2>&1
+
+# Python: syntax check
+echo ""
+echo "▶ Checking Python syntax..."
+python -m py_compile "$ROOT"/packages/analyzer/src/*.py
+echo "   Python syntax OK"
+
+echo ""
+echo "✓ All build checks passed. Proceeding with push."

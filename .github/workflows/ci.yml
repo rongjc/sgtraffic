@@ -1,0 +1,72 @@
+name: CI — Build & Type Check
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  build-api:
+    name: Build API (TypeScript)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build API
+        run: npm run build -w packages/api
+
+  build-web:
+    name: Build Web (TypeScript + Vite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Web
+        run: npm run build -w packages/web
+
+  check-analyzer:
+    name: Check Analyzer (Python syntax)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install analyzer dependencies
+        run: |
+          cd packages/analyzer
+          pip install -e ".[dev]" 2>/dev/null || pip install -r requirements.txt 2>/dev/null || true
+
+      - name: Python syntax check
+        run: |
+          python -m py_compile packages/analyzer/src/*.py
+          echo "All Python files passed syntax check"
+
+  all-checks-pass:
+    name: All checks pass
+    runs-on: ubuntu-latest
+    needs: [build-api, build-web, check-analyzer]
+    steps:
+      - run: echo "All CI checks passed — safe to merge."
