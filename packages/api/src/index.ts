@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import rateLimit from 'express-rate-limit';
 import { initDb } from './db';
 import { errorHandler, notFound } from './middleware/errorHandler';
 import scansRouter from './routes/scans';
@@ -26,6 +27,19 @@ app.use((req, res, next) => {
   next();
 });
 
+// Rate limiting
+// /api/metrics — 30 requests/IP/minute
+const metricsRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    console.warn(`[RateLimit] /api/metrics exceeded by IP ${req.ip}`);
+    res.status(429).json({ error: 'Too many requests', retryAfter: 60 });
+  },
+});
+
 // Health check
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -33,7 +47,7 @@ app.get('/api/health', (_req, res) => {
 
 // Routes
 app.use('/api/scans', scansRouter);
-app.use('/api/metrics', metricsRouter);
+app.use('/api/metrics', metricsRateLimiter, metricsRouter);
 
 // 404 + error handling
 app.use(notFound);

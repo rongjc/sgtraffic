@@ -2,22 +2,50 @@ import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import crypto from 'crypto';
+import rateLimit from 'express-rate-limit';
 import { db } from '../db';
 import { scans, scanFindings } from '../db/schema';
 import { eq } from 'drizzle-orm';
 
+// APK files are ZIP files; magic bytes: PK\x03\x04
+const APK_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
+
+function hasApkMagicBytes(filePath: string): boolean {
+  const fd = fs.openSync(filePath, 'r');
+  const buf = Buffer.alloc(4);
+  try {
+    fs.readSync(fd, buf, 0, 4, 0);
+    return buf.equals(APK_MAGIC);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 const router = Router();
 
-// Uploads directory
-const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
+// Rate limit: 10 uploads/IP/hour
+const uploadRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    console.warn(`[RateLimit] /api/scans upload exceeded by IP ${req.ip}`);
+    res.status(429).json({ error: 'Too many uploads. Limit is 10 per hour.', retryAfter: 3600 });
+  },
+});
+
+// Uploads directory — outside the project tree, not reachable via HTTP
+const UPLOADS_DIR = process.env.UPLOADS_DIR ?? path.join(os.homedir(), '.apk-scanner', 'uploads');
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
-  filename: (_req, file, cb) => {
-    const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    cb(null, `${unique}${path.extname(file.originalname)}`);
+  filename: (_req, _file, cb) => {
+    // Use cryptographically secure UUID; drop original name to prevent path traversal
+    cb(null, `${crypto.randomUUID()}.apk`);
   },
 });
 
@@ -43,10 +71,17 @@ function sha256File(filePath: string): string {
 }
 
 // POST /api/scans — upload APK
-router.post('/', upload.single('file'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', uploadRateLimiter, upload.single('file'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.file) {
       res.status(400).json({ error: 'No file uploaded' });
+      return;
+    }
+
+    // Verify APK magic bytes (PK zip signature) — reject anything that isn't a real ZIP/APK
+    if (!hasApkMagicBytes(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+      res.status(400).json({ error: 'Invalid file: not a valid APK (bad magic bytes)' });
       return;
     }
 
