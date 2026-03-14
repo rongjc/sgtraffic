@@ -1,0 +1,90 @@
+# .github/workflows/mobile-security-scan.yml
+#
+# Runs an APK/IPA malware scan as part of your CI pipeline.
+# The job fails if the risk score exceeds the configured threshold (default 60).
+#
+# Required secrets (set in Settings → Secrets and variables → Actions):
+#   SCANNER_API_URL  — e.g. https://scanner.example.com
+#   SCANNER_API_KEY  — your API key
+
+name: Mobile Security Scan
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Build your APK/IPA here — replace with your actual build step
+      - name: Build APK
+        run: ./gradlew assembleRelease
+        # For iOS: xcodebuild archive ...
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install apk-scanner-cli
+        run: pip install apk-scanner-cli
+
+      # Scan and fail pipeline on risk score > 60
+      - name: Run malware scan
+        env:
+          SCANNER_API_URL: ${{ secrets.SCANNER_API_URL }}
+          SCANNER_API_KEY: ${{ secrets.SCANNER_API_KEY }}
+        run: |
+          apk-scanner scan app/build/outputs/apk/release/app-release.apk \
+            --fail-above 60 \
+            --format table \
+            --timeout 300
+
+      # Download the PDF report and upload it as a build artifact
+      - name: Download scan report
+        if: always()
+        env:
+          SCANNER_API_URL: ${{ secrets.SCANNER_API_URL }}
+          SCANNER_API_KEY: ${{ secrets.SCANNER_API_KEY }}
+        run: |
+          # Extract the scan ID from the previous step if needed, or use a saved env var.
+          # Here we assume a wrapper script or the scan command outputs SCAN_ID.
+          apk-scanner report "$SCAN_ID" --output security-report.pdf
+
+      - name: Upload security report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-report
+          path: security-report.pdf
+          retention-days: 30
+
+  # Optional: post scan results back as a PR comment
+  scan-summary:
+    runs-on: ubuntu-latest
+    needs: security-scan
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install apk-scanner-cli
+        run: pip install apk-scanner-cli
+
+      - name: Post scan summary
+        env:
+          SCANNER_API_URL: ${{ secrets.SCANNER_API_URL }}
+          SCANNER_API_KEY: ${{ secrets.SCANNER_API_KEY }}
+        run: |
+          apk-scanner history --limit 1 --format json > scan-result.json
+          cat scan-result.json

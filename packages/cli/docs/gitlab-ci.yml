@@ -1,0 +1,78 @@
+# .gitlab-ci.yml  (or include this file via include: directive)
+#
+# Runs an APK/IPA malware scan as part of your GitLab CI/CD pipeline.
+# The job fails if the risk score exceeds the configured threshold (default 60).
+#
+# Required CI/CD variables (Settings → CI/CD → Variables):
+#   SCANNER_API_URL  — e.g. https://scanner.example.com
+#   SCANNER_API_KEY  — your API key  (mark as Masked)
+
+stages:
+  - build
+  - security
+  - report
+
+# ── Build ────────────────────────────────────────────────────────────────────
+
+build-apk:
+  stage: build
+  image: gradle:8-jdk17
+  script:
+    - ./gradlew assembleRelease
+  artifacts:
+    paths:
+      - app/build/outputs/apk/release/app-release.apk
+    expire_in: 1 hour
+
+# ── Security scan ─────────────────────────────────────────────────────────────
+
+mobile-security-scan:
+  stage: security
+  image: python:3.11-slim
+  needs: [build-apk]
+  variables:
+    FAIL_ABOVE: "60"
+    SCAN_TIMEOUT: "300"
+  before_script:
+    - pip install --quiet apk-scanner-cli
+  script:
+    - |
+      apk-scanner scan app/build/outputs/apk/release/app-release.apk \
+        --fail-above "$FAIL_ABOVE" \
+        --format table \
+        --timeout "$SCAN_TIMEOUT"
+  # Allow pipeline to continue so the report artifact can be downloaded
+  allow_failure: false
+
+# ── Report artifact ───────────────────────────────────────────────────────────
+
+download-security-report:
+  stage: report
+  image: python:3.11-slim
+  needs: [mobile-security-scan]
+  when: always   # run even if scan job failed
+  before_script:
+    - pip install --quiet apk-scanner-cli
+  script:
+    - SCAN_ID=$(apk-scanner history --limit 1 --format json | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['id'])")
+    - apk-scanner report "$SCAN_ID" --output security-report.pdf
+    - echo "Report saved to security-report.pdf"
+  artifacts:
+    name: "security-scan-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - security-report.pdf
+    expire_in: 30 days
+    when: always
+
+# ── Scheduled full history scan ───────────────────────────────────────────────
+# Optionally add a nightly job that scans all recent builds:
+
+nightly-scan-history:
+  stage: security
+  image: python:3.11-slim
+  only:
+    - schedules
+  before_script:
+    - pip install --quiet apk-scanner-cli
+  script:
+    - apk-scanner history --limit 50 --format table

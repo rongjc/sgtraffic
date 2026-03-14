@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "apk-scanner-cli"
+version = "1.0.0"
+description = "CI/CD CLI tool for the APK/Mobile App malware scanner REST API"
+requires-python = ">=3.9"
+readme = "README.md"
+license = { text = "MIT" }
+keywords = ["security", "mobile", "apk", "malware", "ci", "cd"]
+dependencies = [
+    "click>=8.1.0",
+    "requests>=2.31.0",
+    "rich>=13.0.0",
+]
+
+[project.scripts]
+apk-scanner = "scanner_cli.main:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["scanner_cli*"]

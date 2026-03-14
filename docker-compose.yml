@@ -1,0 +1,88 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - ANALYZER_URL=http://analyzer:5001
+      - UPLOADS_DIR=/app/uploads
+      - NODE_ENV=production
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      - analyzer
+    restart: unless-stopped
+
+  analyzer:
+    build:
+      context: ./packages/analyzer
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5001"
+    environment:
+      - EMULATOR_HOST=emulator
+      - EMULATOR_ADB_PORT=5555
+      - EMULATOR_FRIDA_PORT=27042
+      - MITMPROXY_HOST=mitmproxy
+      - MITMPROXY_API_PORT=8081
+      - DYNAMIC_TIMEOUT=${DYNAMIC_TIMEOUT:-120}
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      - emulator
+      - mitmproxy
+    restart: unless-stopped
+
+  # Android emulator container — runs AVD with Frida server pre-installed.
+  # Uses the budtmo/docker-android image which packages QEMU + Android SDK.
+  emulator:
+    image: budtmo/docker-android:emulator_14.0
+    privileged: true
+    ports:
+      - "5555:5555"   # ADB
+      - "27042:27042" # Frida server
+      - "6080:6080"   # noVNC (optional: visual debug access)
+    environment:
+      - EMULATOR_DEVICE=Samsung Galaxy S10
+      - WEB_VNC=true
+      - APPIUM=false
+      - FRIDA=true
+    volumes:
+      - uploads:/app/uploads:ro
+      - emulator-data:/root
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "adb", "-s", "emulator-5554", "shell", "getprop", "sys.boot_completed"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
+  # mitmproxy — intercepts and records HTTP/HTTPS traffic from the emulator.
+  # The emulator is configured to route traffic through mitmproxy at startup.
+  mitmproxy:
+    image: mitmproxy/mitmproxy:latest
+    command: mitmweb --web-host 0.0.0.0 --web-port 8081 --listen-host 0.0.0.0 --listen-port 8080
+    ports:
+      - "8080:8080"   # Proxy listener
+      - "8081:8081"   # Web UI / REST API
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: packages/web/Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  uploads:
+  emulator-data:
