@@ -3,6 +3,7 @@ import path from 'path';
 import { initDb } from './db';
 import { errorHandler, notFound } from './middleware/errorHandler';
 import scansRouter from './routes/scans';
+import metricsRouter from './routes/metrics';
 import { jobQueue } from './jobs/queue';
 import { processApkJob } from './jobs/processor';
 
@@ -32,6 +33,7 @@ app.get('/api/health', (_req, res) => {
 
 // Routes
 app.use('/api/scans', scansRouter);
+app.use('/api/metrics', metricsRouter);
 
 // 404 + error handling
 app.use(notFound);
