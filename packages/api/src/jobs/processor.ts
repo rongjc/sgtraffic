@@ -6,6 +6,7 @@
 
 import crypto from 'crypto';
 import fs from 'fs';
+import { z } from 'zod';
 import { db } from '../db';
 import { scans, scanFindings } from '../db/schema';
 import { eq } from 'drizzle-orm';
@@ -20,21 +21,23 @@ function deleteApkFile(filePath: string): void {
 
 const ANALYZER_URL = process.env.ANALYZER_URL ?? 'http://127.0.0.1:5001';
 
-interface AnalyzerFinding {
-  category: string;
-  severity: 'critical' | 'high' | 'medium' | 'low';
-  rule: string;
-  description: string;
-  evidence?: string;
-}
+const AnalyzerResultSchema = z.object({
+  verdict: z.enum(['clean', 'pha', 'suspicious']),
+  risk_score: z.number().int().min(0).max(100),
+  pha_categories: z.array(z.string()),
+  findings: z.array(
+    z.object({
+      category: z.string(),
+      severity: z.enum(['critical', 'high', 'medium', 'low']),
+      rule: z.string(),
+      description: z.string(),
+      evidence: z.string().optional(),
+    }),
+  ),
+  metadata: z.record(z.unknown()),
+});
 
-interface AnalyzerResult {
-  verdict: 'clean' | 'pha' | 'suspicious';
-  risk_score: number;
-  pha_categories: string[];
-  findings: AnalyzerFinding[];
-  metadata: Record<string, unknown>;
-}
+type AnalyzerResult = z.infer<typeof AnalyzerResultSchema>;
 
 export async function processApkJob(job: { scanId: string; filePath: string }): Promise<void> {
   const { scanId, filePath } = job;
@@ -60,7 +63,12 @@ export async function processApkJob(job: { scanId: string; filePath: string }): 
       throw new Error(`Analyzer returned HTTP ${response.status}: ${body}`);
     }
 
-    result = (await response.json()) as AnalyzerResult;
+    const raw = await response.json();
+    const parsed = AnalyzerResultSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new Error(`Analyzer response validation failed: ${parsed.error.message}`);
+    }
+    result = parsed.data;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[Processor] Analyzer call failed for scan ${scanId}:`, msg);
@@ -78,18 +86,20 @@ export async function processApkJob(job: { scanId: string; filePath: string }): 
     throw err; // rethrow so the queue can retry
   }
 
-  // Insert individual findings
-  for (const f of result.findings) {
+  // Batch insert all findings in a single statement
+  if (result.findings.length > 0) {
     db.insert(scanFindings)
-      .values({
-        id: crypto.randomUUID(),
-        scanId,
-        category: f.category,
-        severity: f.severity,
-        rule: f.rule,
-        description: f.description,
-        evidence: f.evidence ?? null,
-      })
+      .values(
+        result.findings.map((f) => ({
+          id: crypto.randomUUID(),
+          scanId,
+          category: f.category,
+          severity: f.severity,
+          rule: f.rule,
+          description: f.description,
+          evidence: f.evidence ?? null,
+        })),
+      )
       .run();
   }
 
