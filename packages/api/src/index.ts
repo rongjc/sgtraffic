@@ -7,6 +7,7 @@ import scansRouter from './routes/scans';
 import metricsRouter from './routes/metrics';
 import { jobQueue } from './jobs/queue';
 import { processApkJob } from './jobs/processor';
+import { startStaleScanCleanup } from './jobs/cleanup';
 
 const app = express();
 const PORT = process.env.PORT ?? 3001;
@@ -56,6 +57,7 @@ app.use(errorHandler);
 // Boot
 initDb();
 jobQueue.register(processApkJob);
+startStaleScanCleanup();
 app.listen(PORT, () => {
   console.log(`[API] Listening on http://localhost:${PORT}`);
   console.log(`[API] Analyzer endpoint: ${process.env.ANALYZER_URL ?? 'http://127.0.0.1:5001'}`);

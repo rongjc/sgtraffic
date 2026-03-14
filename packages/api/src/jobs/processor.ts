@@ -5,9 +5,18 @@
  */
 
 import crypto from 'crypto';
+import fs from 'fs';
 import { db } from '../db';
 import { scans, scanFindings } from '../db/schema';
 import { eq } from 'drizzle-orm';
+
+function deleteApkFile(filePath: string): void {
+  fs.unlink(filePath, (err) => {
+    if (err && err.code !== 'ENOENT') {
+      console.warn(`[Processor] Failed to delete APK file ${filePath}:`, err.message);
+    }
+  });
+}
 
 const ANALYZER_URL = process.env.ANALYZER_URL ?? 'http://127.0.0.1:5001';
 
@@ -65,6 +74,7 @@ export async function processApkJob(job: { scanId: string; filePath: string }): 
       .where(eq(scans.id, scanId))
       .run();
 
+    deleteApkFile(filePath);
     throw err; // rethrow so the queue can retry
   }
 
@@ -95,6 +105,7 @@ export async function processApkJob(job: { scanId: string; filePath: string }): 
     .where(eq(scans.id, scanId))
     .run();
 
+  deleteApkFile(filePath);
   console.log(
     `[Processor] Scan ${scanId} complete: verdict=${result.verdict} risk=${result.risk_score} findings=${result.findings.length}`,
   );
