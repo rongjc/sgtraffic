@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
 export const users = sqliteTable('users', {
@@ -36,4 +36,31 @@ export const scanFindings = sqliteTable('scan_findings', {
   rule: text('rule').notNull(),
   description: text('description').notNull(),
   evidence: text('evidence'),
+});
+
+export const webhooks = sqliteTable('webhooks', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').references(() => users.id),
+  url: text('url').notNull(),
+  eventTypes: text('event_types').notNull().default('["scan.completed","scan.failed"]'), // JSON array
+  signingSecret: text('signing_secret').notNull(),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+});
+
+export const webhookDeliveries = sqliteTable('webhook_deliveries', {
+  id: text('id').primaryKey(),
+  webhookId: text('webhook_id')
+    .notNull()
+    .references(() => webhooks.id, { onDelete: 'cascade' }),
+  scanId: text('scan_id'),
+  eventType: text('event_type').notNull(),
+  payload: text('payload').notNull(), // JSON
+  status: text('status', { enum: ['pending', 'delivered', 'failed'] }).notNull().default('pending'),
+  responseCode: integer('response_code'),
+  responseBody: text('response_body'),
+  attempts: integer('attempts').notNull().default(0),
+  nextRetryAt: text('next_retry_at'),
+  deliveredAt: text('delivered_at'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 });

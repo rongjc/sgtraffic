@@ -5,9 +5,11 @@ import { initDb } from './db';
 import { errorHandler, notFound } from './middleware/errorHandler';
 import scansRouter from './routes/scans';
 import metricsRouter from './routes/metrics';
+import webhooksRouter from './routes/webhooks';
 import { jobQueue } from './jobs/queue';
 import { processApkJob } from './jobs/processor';
 import { startStaleScanCleanup } from './jobs/cleanup';
+import { startWebhookRetryLoop } from './webhooks/service';
 
 const app = express();
 const PORT = process.env.PORT ?? 3001;
@@ -49,6 +51,7 @@ app.get('/api/health', (_req, res) => {
 // Routes
 app.use('/api/scans', scansRouter);
 app.use('/api/metrics', metricsRateLimiter, metricsRouter);
+app.use('/api/webhooks', webhooksRouter);
 
 // 404 + error handling
 app.use(notFound);
@@ -58,6 +61,7 @@ app.use(errorHandler);
 initDb();
 jobQueue.register(processApkJob);
 startStaleScanCleanup();
+startWebhookRetryLoop();
 app.listen(PORT, () => {
   console.log(`[API] Listening on http://localhost:${PORT}`);
   console.log(`[API] Analyzer endpoint: ${process.env.ANALYZER_URL ?? 'http://127.0.0.1:5001'}`);

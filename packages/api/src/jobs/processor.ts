@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { db } from '../db';
 import { scans, scanFindings } from '../db/schema';
 import { eq } from 'drizzle-orm';
+import { dispatchWebhooks } from '../webhooks/service';
 
 function deleteApkFile(filePath: string): void {
   fs.unlink(filePath, (err) => {
@@ -82,6 +83,12 @@ export async function processApkJob(job: { scanId: string; filePath: string }): 
       .where(eq(scans.id, scanId))
       .run();
 
+    // Dispatch scan.failed webhooks (fire-and-forget)
+    const failedScan = db.select().from(scans).where(eq(scans.id, scanId)).get();
+    if (failedScan) {
+      void dispatchWebhooks('scan.failed', failedScan);
+    }
+
     deleteApkFile(filePath);
     throw err; // rethrow so the queue can retry
   }
@@ -119,4 +126,10 @@ export async function processApkJob(job: { scanId: string; filePath: string }): 
   console.log(
     `[Processor] Scan ${scanId} complete: verdict=${result.verdict} risk=${result.risk_score} findings=${result.findings.length}`,
   );
+
+  // Dispatch scan.completed webhooks (fire-and-forget)
+  const completedScan = db.select().from(scans).where(eq(scans.id, scanId)).get();
+  if (completedScan) {
+    void dispatchWebhooks('scan.completed', completedScan);
+  }
 }

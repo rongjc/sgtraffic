@@ -54,5 +54,35 @@ export function initDb() {
     CREATE INDEX IF NOT EXISTS idx_scans_status ON scans(status);
     CREATE INDEX IF NOT EXISTS idx_scans_created_at ON scans(created_at);
     CREATE INDEX IF NOT EXISTS idx_scan_findings_scan_id ON scan_findings(scan_id);
+
+    CREATE TABLE IF NOT EXISTS webhooks (
+      id TEXT PRIMARY KEY,
+      user_id TEXT REFERENCES users(id),
+      url TEXT NOT NULL,
+      event_types TEXT NOT NULL DEFAULT '["scan.completed","scan.failed"]',
+      signing_secret TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS webhook_deliveries (
+      id TEXT PRIMARY KEY,
+      webhook_id TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
+      scan_id TEXT,
+      event_type TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','delivered','failed')),
+      response_code INTEGER,
+      response_body TEXT,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      next_retry_at TEXT,
+      delivered_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_webhooks_user_id ON webhooks(user_id);
+    CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_webhook_id ON webhook_deliveries(webhook_id);
+    CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_status ON webhook_deliveries(status);
+    CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_next_retry_at ON webhook_deliveries(next_retry_at);
   `);
 }
